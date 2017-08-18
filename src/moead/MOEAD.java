@@ -1158,7 +1158,8 @@ public class MOEAD {
 		Collections.shuffle(candidateList, random);
 
 		finishConstructingGraph(currentEndInputs, end, candidateList, connections, newGraph, mergedGraph, seenNodes, relevant, true);
-
+		
+		newGraph.setInit(this);
 		return newGraph;
 	}
 

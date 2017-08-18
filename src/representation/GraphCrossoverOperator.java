@@ -19,7 +19,7 @@ public class GraphCrossoverOperator extends CrossoverOperator {
 	    GraphIndividual mergedGraph = mergeGraphs(t1, t2, init);
 	    // Extract child from merged structure
 	    GraphIndividual newG = init.createNewGraph(mergedGraph, init.startServ.clone(), init.endServ.clone(), init.relevant);
-
+	    newG.setInit(init);
 	    newG.evaluate();
 		return newG;
 	}
