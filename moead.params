@@ -5,10 +5,13 @@ numObjectives 2
 numNeighbours 30
 crossoverProbability 0.8
 mutationProbability 0.2
+localSearchProbability 0.0
 stopCrit moead.GenerationStoppingCriteria
 indType representation.GraphIndividual
 mutOperator representation.GraphMutationOperator
 crossOperator representation.GraphCrossoverOperator
+localOperator representation.GraphLocalSearchOperator
+numLocalSearchTries 30
 outFileName out.stat
 frontFileName front.stat
 serviceRepository services-output.xml

@@ -57,6 +57,11 @@ public class Node implements Cloneable {
 	}
 
 	@Override
+	public String toString() {
+		return s.name;
+	}
+
+	@Override
 	public int hashCode() {
 		return s.name.hashCode();
 	}

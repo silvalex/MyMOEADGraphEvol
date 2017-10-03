@@ -33,6 +33,7 @@ import org.xml.sax.SAXException;
 import representation.GraphCrossoverOperator;
 import representation.Edge;
 import representation.GraphIndividual;
+import representation.GraphLocalSearchOperator;
 import representation.GraphMutationOperator;
 import representation.Node;
 
@@ -49,11 +50,14 @@ public class MOEAD {
 	public static int numObjectives = 2;
 	public static int numNeighbours = 30;
 	public static double crossoverProbability = 0.8;
-	public static double mutationProbability = 0.2;
+	public static double mutationProbability = 0.1;
+	public static double localSearchProbability = 0.1;
 	public static StoppingCriteria stopCrit = new GenerationStoppingCriteria(generations);
 	public static Individual indType = new GraphIndividual();
 	public static MutationOperator mutOperator = new GraphMutationOperator();
 	public static CrossoverOperator crossOperator = new GraphCrossoverOperator();
+	public static LocalSearchOperator localOperator = new GraphLocalSearchOperator();
+	public static int numLocalSearchTries = 30;
 	public static String outFileName = "out.stat";
 	public static String frontFileName = "front.stat";
 	public static String serviceRepository = "services-output.xml";
@@ -72,6 +76,10 @@ public class MOEAD {
 	public static final int RELIABILITY = 1;
 	public static final int TIME = 2;
 	public static final int COST = 3;
+
+	public static final int CROSSOVER = 0;
+	public static final int MUTATION = 1;
+	public static final int LOCAL_SEARCH = 2;
 
 	// Internal state
 	private Individual[] population = new Individual[popSize];
@@ -153,6 +161,9 @@ public class MOEAD {
 		        case "mutationProbability":
 		       	 mutationProbability = Double.valueOf(param);
 		            break;
+				case "localSearchProbability":
+					localSearchProbability = Double.valueOf(param);
+					break;
 		        case "stopCrit":
 		       	 stopCrit = (StoppingCriteria) Class.forName(param).getConstructor(Integer.TYPE).newInstance(generations);
 		       	 break;
@@ -165,6 +176,12 @@ public class MOEAD {
 		        case "crossOperator":
 		       	 crossOperator = (CrossoverOperator) Class.forName(param).newInstance();
 		       	 break;
+				case "localOperator":
+					localOperator = (LocalSearchOperator) Class.forName(param).newInstance();
+					break;
+				case "numLocalSearchTries":
+					numLocalSearchTries = Integer.valueOf(param);
+					break;
 		        case "outFileName":
 		       	 outFileName = param;
 		       	 break;
@@ -221,6 +238,8 @@ public class MOEAD {
 
 		// Initialise
 		long startTime = System.currentTimeMillis();
+		Set<Individual> externalPopulation = new HashSet<Individual>();
+
 		initialise();
 		breedingTime[generation] = System.currentTimeMillis() - startTime;
 
@@ -264,6 +283,8 @@ public class MOEAD {
 				finishEvaluating();
 			// Copy the next generation over as the new population
 			population = newGeneration;
+			// Update the external population
+			Collections.addAll(externalPopulation, population);
 			long endTime = System.currentTimeMillis();
 			evaluationTime[generation] = endTime - startTime;
 			// Write out stats
@@ -271,11 +292,9 @@ public class MOEAD {
 			generation++;
 		}
 
-
-		// Produce final Pareto front
-		Set<Individual> paretoFront = produceParetoFront(population);
 		// Write the front to disk
-		writeFrontStatistics(frontWriter, paretoFront);
+		externalPopulation = produceParetoFront(externalPopulation);
+		writeFrontStatistics(frontWriter, externalPopulation);
 
 		// Close writers
 		try {
@@ -331,8 +350,8 @@ public class MOEAD {
 			calculateNormalisationBounds(relevant);
 
 		// Ensure that mutation and crossover probabilities add up to 1
-		if (mutationProbability + crossoverProbability != 1.0)
-			throw new RuntimeException("The probabilities for mutation and crossover should add up to 1.");
+		if (mutationProbability + crossoverProbability + localSearchProbability != 1.0)
+			throw new RuntimeException("The probabilities for mutation, crossover, and local search should add up to 1.");
 		// Initialise random number
 		random = new Random(seed);
 		// Initialise the reference point
@@ -465,22 +484,33 @@ public class MOEAD {
 	private Individual evolveNewIndividual(Individual original, int index, Random random) {
 		// Check whether to apply mutation or crossover
 		double r = random.nextDouble();
-		boolean performCrossover;
-		if (r <= crossoverProbability)
-			performCrossover = true;
+		int chosenOperation;
+		if (crossoverProbability != 0.0 && r <= crossoverProbability)
+			chosenOperation = CROSSOVER;
+		else if (mutationProbability != 0.0 && r <= crossoverProbability + mutationProbability)
+			chosenOperation = MUTATION;
+		else if (localSearchProbability != 0.0 && r <= crossoverProbability + mutationProbability + localSearchProbability)
+			chosenOperation = LOCAL_SEARCH;
 		else
-			performCrossover = false;
+			throw new RuntimeException("Invalid random value when selecting ");
 
 		// Perform crossover if that is the chosen operation
-		if (performCrossover) {
+		if (chosenOperation == CROSSOVER) {
 			// Select a neighbour at random
 			int neighbourIndex = random.nextInt(numNeighbours);
 			Individual neighbour = population[neighbourIndex];
 			return crossOperator.doCrossover(original.clone(), neighbour.clone(), this);
 		}
 		// Else, perform mutation
-		else {
+		else if (chosenOperation == MUTATION) {
 			return mutOperator.mutate(original.clone(), this);
+		}
+		// Else, perform local search
+		else if (chosenOperation == LOCAL_SEARCH) {
+			return localOperator.doSearch(original.clone(), this, index);
+		}
+		else {
+			throw new RuntimeException("Invalid operation selected.");
 		}
 	}
 
@@ -523,7 +553,7 @@ public class MOEAD {
 	 * @param problemIndex - for retrieving weights
 	 * @return score
 	 */
-	private double calculateScore(Individual ind, int problemIndex) {
+	public double calculateScore(Individual ind, int problemIndex) {
 		double[] problemWeights = weights[problemIndex];
 		double sum = 0;
 		for (int i = 0; i < numObjectives; i++)
@@ -539,7 +569,7 @@ public class MOEAD {
 	 * @param problemIndex - for retrieving weights and ideal point
 	 * @return score
 	 */
-	private double calculateTchebycheffScore(Individual ind, int problemIndex) {
+	public double calculateTchebycheffScore(Individual ind, int problemIndex) {
 		double[] problemWeights = weights[problemIndex];
 		double max_fun = -1 * Double.MAX_VALUE;
 
@@ -576,7 +606,7 @@ public class MOEAD {
 	 * @param population
 	 * @return Pareto front
 	 */
-	private Set<Individual> produceParetoFront(Individual[] population) {
+	private Set<Individual> produceParetoFront(Set<Individual> population) {
 		// Initialise sets/variable for tracking current front
 		Set<Individual> front = new HashSet<Individual>();
 		Set<Individual> toRemove = new HashSet<Individual>();
@@ -1158,7 +1188,7 @@ public class MOEAD {
 		Collections.shuffle(candidateList, random);
 
 		finishConstructingGraph(currentEndInputs, end, candidateList, connections, newGraph, mergedGraph, seenNodes, relevant, true);
-		
+
 		newGraph.setInit(this);
 		return newGraph;
 	}
