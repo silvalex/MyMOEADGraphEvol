@@ -78,12 +78,12 @@ public abstract class Individual implements Cloneable {
 
 		for (int i = 0; i < thisObjValues.length; i++) {
 			// Check if this individual has at least equivalent values for all objectives
-			if (thisObjValues[i] < otherObjValues[i]) {
+			if (thisObjValues[i] > otherObjValues[i]) {
 				equivalent = false;
 				break;
 			}
 			// Check if this individual has at least one higher value than the other objectives
-			if (thisObjValues[i] > otherObjValues[i]) {
+			if (thisObjValues[i] < otherObjValues[i]) {
 				higher = true;
 			}
 		}

@@ -285,6 +285,7 @@ public class MOEAD {
 			population = newGeneration;
 			// Update the external population
 			Collections.addAll(externalPopulation, population);
+			externalPopulation = produceParetoFront(externalPopulation);
 			long endTime = System.currentTimeMillis();
 			evaluationTime[generation] = endTime - startTime;
 			// Write out stats
@@ -293,7 +294,6 @@ public class MOEAD {
 		}
 
 		// Write the front to disk
-		externalPopulation = produceParetoFront(externalPopulation);
 		writeFrontStatistics(frontWriter, externalPopulation);
 
 		// Close writers
